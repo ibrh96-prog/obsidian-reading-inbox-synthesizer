@@ -10,7 +10,7 @@ import { SynthesisEngine, type ClippingInput } from "./synthesizer";
 import type { Clipping, SynthesisCache } from "./types";
 
 function emptyCache(): SynthesisCache {
-	return { extractions: {}, lastSynced: "" };
+	return { extractions: {}, themeSyntheses: {}, lastSynced: "" };
 }
 
 /**
@@ -121,7 +121,8 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 			await this.persist();
 
 			new Notice(
-				`Synced ${result.extracted} clippings (${result.skipped} skipped, ${result.failed} failed).`
+				`Synced ${result.extracted} clippings, ${result.themes} themes ` +
+					`(${result.skipped} skipped, ${result.failed} failed).`
 			);
 		} catch (error) {
 			console.error("Reading Inbox Synthesizer: sync failed", error);
