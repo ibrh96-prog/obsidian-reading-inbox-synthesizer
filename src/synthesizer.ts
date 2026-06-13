@@ -23,6 +23,17 @@ interface RawExtraction {
 	language?: string;
 }
 
+/**
+ * Why a parse attempt yielded nothing usable. "invalid-json" and "empty"
+ * (syntactically valid JSON but no real extraction in it) have different
+ * causes in the field — weak JSON mode vs. a body the model couldn't read —
+ * so they are reported separately.
+ */
+type ParseOutcome =
+	| { kind: "ok"; extraction: RawExtraction }
+	| { kind: "invalid-json" }
+	| { kind: "empty" };
+
 const EXTRACTION_SYSTEM_PROMPT = [
 	"You are a reading-inbox extraction engine. Read the saved web article",
 	"and extract its summary, key claims, topics, and language.",
@@ -128,22 +139,198 @@ export class SynthesisEngine {
 	}
 
 	/**
-	 * Render the synthesis report (batch summaries, cross-article themes,
-	 * weekly digest) as a markdown document. Pure: reads the in-memory cache
-	 * and returns a string — writing it to the vault is the caller's job.
-	 *
-	 * TODO Phase 3: implement report sections.
+	 * Render the synthesis report as a markdown document. Pure and free: reads
+	 * the in-memory cache and the collected clippings — zero LLM calls — and
+	 * returns a string; writing it to the vault is the caller's job. `todayISO`
+	 * (YYYY-MM-DD) is the caller's clock and anchors the "This week" window.
 	 */
-	buildReportMarkdown(todayISO: string): string {
-		void todayISO;
-		return [
-			"# Reading Synthesis",
-			"",
-			`_Last synced: ${this.cache.lastSynced || "never"}_`,
-			"",
-			"_Coming soon._",
-			"",
-		].join("\n");
+	buildReportMarkdown(clippings: Clipping[], todayISO: string): string {
+		const lines: string[] = [];
+
+		// Newest saved first; undated clippings last ("" sorts after any date
+		// in descending order).
+		const sorted = [...clippings].sort((a, b) =>
+			this.dateKey(b.savedDate).localeCompare(this.dateKey(a.savedDate))
+		);
+		const extractionOf = (clipping: Clipping) =>
+			this.cache.extractions[clipping.path]?.extraction;
+
+		lines.push("# Reading Synthesis");
+		lines.push("");
+		lines.push(`_Last synced: ${this.cache.lastSynced || "never"}_`);
+		lines.push("");
+
+		// --- 1. Reading inbox ---
+		lines.push("## Reading inbox");
+		if (sorted.length === 0) {
+			lines.push("_No clippings found._");
+		} else {
+			for (const clipping of sorted) {
+				const name = this.noteName(clipping.path);
+				const extraction = extractionOf(clipping);
+				if (!extraction) {
+					lines.push(`- [[${name}]] — _not synced yet_`);
+					continue;
+				}
+				const topics =
+					extraction.topics.length > 0
+						? extraction.topics.join(", ")
+						: "no topics";
+				const read = extraction.readTimeMinutes
+					? ` — ${extraction.readTimeMinutes} min read`
+					: "";
+				lines.push(`- [[${name}]] — ${topics}${read}`);
+			}
+		}
+		lines.push("");
+
+		// --- 2. Themes (deterministic topic grouping, zero LLM) ---
+		lines.push("## Themes");
+		const themes = this.groupByTopic(sorted);
+		if (themes.length === 0) {
+			lines.push("_No shared topics across clippings yet._");
+			lines.push("");
+		} else {
+			for (const theme of themes) {
+				lines.push(`### ${theme.topic}`);
+				for (const member of theme.members) {
+					const name = this.noteName(member.clipping.path);
+					lines.push(`- [[${name}]] — ${this.oneLine(member.summary)}`);
+				}
+				lines.push("");
+			}
+		}
+
+		// --- 3. This week ---
+		lines.push("## This week");
+		const weekStart = this.weekStartOf(todayISO);
+		const weekEnd = this.addDays(weekStart, 7);
+		const thisWeek = sorted.filter((clipping) => {
+			const day = this.dateKey(clipping.savedDate);
+			return day !== "" && day >= weekStart && day < weekEnd;
+		});
+		lines.push(`_Week of ${weekStart}_`);
+		lines.push("");
+		if (thisWeek.length === 0) {
+			lines.push("_Nothing saved this week._");
+		} else {
+			for (const clipping of thisWeek) {
+				const name = this.noteName(clipping.path);
+				lines.push(
+					`- [[${name}]] — saved ${this.dateKey(clipping.savedDate)}`
+				);
+			}
+		}
+		lines.push("");
+
+		// --- 4. Summaries ---
+		lines.push("## Summaries");
+		const synced = sorted.filter((c) => extractionOf(c) !== undefined);
+		if (synced.length === 0) {
+			lines.push('_No extractions yet — run "Sync clippings" first._');
+		} else {
+			for (const clipping of synced) {
+				const extraction = extractionOf(clipping);
+				if (!extraction) {
+					continue;
+				}
+				lines.push(`### ${this.noteName(clipping.path)}`);
+				lines.push(extraction.summary);
+				if (extraction.keyClaims.length > 0) {
+					// Claims as flowing prose, not bullets.
+					lines.push("");
+					lines.push(extraction.keyClaims.join(" "));
+				}
+				lines.push("");
+			}
+		}
+
+		return lines.join("\n");
+	}
+
+	// --- Report internals (all pure) ---
+
+	/**
+	 * Group synced clippings by shared topic (exact lowercase match). Only
+	 * topics carried by 2+ clippings count as a theme. Ordered biggest theme
+	 * first, then alphabetically — fully deterministic, no LLM.
+	 */
+	private groupByTopic(
+		clippings: Clipping[]
+	): Array<{ topic: string; members: Array<{ clipping: Clipping; summary: string }> }> {
+		const groups = new Map<
+			string,
+			Array<{ clipping: Clipping; summary: string }>
+		>();
+
+		for (const clipping of clippings) {
+			const extraction = this.cache.extractions[clipping.path]?.extraction;
+			if (!extraction) {
+				continue;
+			}
+			for (const topic of extraction.topics) {
+				const members = groups.get(topic) ?? [];
+				members.push({ clipping, summary: extraction.summary });
+				groups.set(topic, members);
+			}
+		}
+
+		return [...groups.entries()]
+			.filter(([, members]) => members.length >= 2)
+			.sort(
+				([topicA, a], [topicB, b]) =>
+					b.length - a.length || topicA.localeCompare(topicB)
+			)
+			.map(([topic, members]) => ({ topic, members }));
+	}
+
+	/**
+	 * Monday of the week containing `todayISO`, as YYYY-MM-DD. Sunday belongs
+	 * to the previous Monday (steps back 6 days). Pure arithmetic on the
+	 * passed-in date via UTC — never reads the clock, and the window check
+	 * itself compares YYYY-MM-DD strings lexicographically, so no timezone
+	 * parsing can shift the boundary.
+	 */
+	private weekStartOf(todayISO: string): string {
+		const day = todayISO.slice(0, 10);
+		const [year, month, date] = day.split("-").map(Number);
+		const dow = new Date(Date.UTC(year, month - 1, date)).getUTCDay();
+		const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+		return this.addDays(day, -daysSinceMonday);
+	}
+
+	/**
+	 * Add days to a YYYY-MM-DD calendar date, returning YYYY-MM-DD. Arithmetic
+	 * runs in UTC so month boundaries and DST never shift the result.
+	 */
+	private addDays(dateOnly: string, days: number): string {
+		const [year, month, day] = dateOnly.split("-").map(Number);
+		const dt = new Date(Date.UTC(year, month - 1, day));
+		dt.setUTCDate(dt.getUTCDate() + days);
+		const y = dt.getUTCFullYear();
+		const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
+		const d = String(dt.getUTCDate()).padStart(2, "0");
+		return `${y}-${m}-${d}`;
+	}
+
+	/**
+	 * Reduce a date string to its calendar-date key (YYYY-MM-DD) for timezone-
+	 * safe lexicographic comparison. Returns "" for missing/invalid dates.
+	 */
+	private dateKey(date: string | undefined): string {
+		const day = (date ?? "").slice(0, 10);
+		return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : "";
+	}
+
+	/** Vault path → wikilink-friendly note name (drop folders and .md). */
+	private noteName(sourcePath: string): string {
+		const base = sourcePath.split("/").pop() ?? sourcePath;
+		return base.replace(/\.md$/i, "");
+	}
+
+	/** Flatten a summary to a single line for list items. */
+	private oneLine(text: string): string {
+		return text.replace(/\s*\n\s*/g, " ").trim();
 	}
 
 	// --- Extraction internals ---
@@ -165,25 +352,34 @@ export class SynthesisEngine {
 				EXTRACTION_SYSTEM_PROMPT,
 				userPrompt
 			);
-			const parsedFirst = this.parseExtraction(first);
-			if (parsedFirst) {
-				return this.toClipExtraction(clipping, body, parsedFirst);
+			const firstOutcome = this.parseExtraction(first);
+			if (firstOutcome.kind === "ok") {
+				return this.toClipExtraction(clipping, body, firstOutcome.extraction);
 			}
 
-			const retryPrompt =
-				`${userPrompt}\n\n` +
-				"Your previous output was not valid JSON. Return ONLY the JSON object.";
+			const complaint =
+				firstOutcome.kind === "empty"
+					? "Your previous output was valid JSON but contained no summary. " +
+						"Return the JSON object with a non-empty summary."
+					: "Your previous output was not valid JSON. Return ONLY the JSON object.";
+			const retryPrompt = `${userPrompt}\n\n${complaint}`;
 			const second = await this.llm.complete(
 				EXTRACTION_SYSTEM_PROMPT,
 				retryPrompt
 			);
-			const parsedSecond = this.parseExtraction(second);
-			if (parsedSecond) {
-				return this.toClipExtraction(clipping, body, parsedSecond);
+			const secondOutcome = this.parseExtraction(second);
+			if (secondOutcome.kind === "ok") {
+				return this.toClipExtraction(clipping, body, secondOutcome.extraction);
 			}
 
+			// Response body text only — never API keys or headers.
+			const reason =
+				secondOutcome.kind === "empty"
+					? "valid JSON but empty extraction"
+					: "invalid JSON";
 			console.warn(
-				`[Reading Inbox Synthesizer] Could not parse extraction for clipping: ${clipping.path}`
+				`[Reading Inbox Synthesizer] Extraction failed (${reason}) for clipping: ${clipping.path}. ` +
+					`Raw response (first 300 chars): ${second.slice(0, 300)}`
 			);
 			return null;
 		} catch (error) {
@@ -235,13 +431,37 @@ export class SynthesisEngine {
 		return Math.max(1, Math.round(words / 200));
 	}
 
-	private parseExtraction(raw: string): RawExtraction | null {
+	private parseExtraction(raw: string): ParseOutcome {
 		const cleaned = this.stripFences(raw);
+
+		let value = this.tryParseJson(cleaned);
+		if (value === undefined) {
+			// Weak models often wrap the JSON in prose ("Here is the JSON: {…}").
+			// Recover by slicing from the first "{" to the last "}".
+			const start = cleaned.indexOf("{");
+			const end = cleaned.lastIndexOf("}");
+			if (start !== -1 && end > start) {
+				value = this.tryParseJson(cleaned.slice(start, end + 1));
+			}
+		}
+		if (value === undefined) {
+			return { kind: "invalid-json" };
+		}
+
+		const extraction = this.coerceExtraction(value);
+		if (extraction === null) {
+			return { kind: "empty" };
+		}
+		return { kind: "ok", extraction };
+	}
+
+	/** JSON.parse that returns undefined instead of throwing. (JSON.parse
+	 * itself can never produce undefined, so it's a safe failure sentinel.) */
+	private tryParseJson(text: string): unknown {
 		try {
-			const value: unknown = JSON.parse(cleaned);
-			return this.coerceExtraction(value);
+			return JSON.parse(text);
 		} catch {
-			return null;
+			return undefined;
 		}
 	}
 

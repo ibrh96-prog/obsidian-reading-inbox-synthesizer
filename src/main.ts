@@ -48,6 +48,18 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 				void this.runSync();
 			},
 		});
+
+		this.addCommand({
+			id: "generate-reading-report",
+			name: "Generate reading report",
+			callback: () => {
+				void this.runGenerateReport();
+			},
+		});
+
+		this.addRibbonIcon("book-open", "Generate reading report", () => {
+			void this.runGenerateReport();
+		});
 	}
 
 	override onunload(): void {}
@@ -118,9 +130,44 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 	}
 
 	/**
-	 * Read a clipping's article body: frontmatter stripped, truncated to
-	 * MAX_INPUT_CHARS so long articles fit small-context models. Returns null
-	 * when the path no longer resolves to a file (vanished mid-sync).
+	 * Render the report from the current cache and write it to a fixed vault
+	 * note, overwriting if it exists, then open it. Zero LLM calls — always
+	 * free; collecting clippings only reads vault metadata.
+	 */
+	private async runGenerateReport(): Promise<void> {
+		const path = "Reading Synthesis.md";
+		try {
+			const clippings = this.collector.collect();
+			const markdown = this.engine.buildReportMarkdown(
+				clippings,
+				this.todayISO()
+			);
+
+			const existing = this.app.vault.getAbstractFileByPath(path);
+			let file: TFile;
+			if (existing instanceof TFile) {
+				await this.app.vault.modify(existing, markdown);
+				file = existing;
+			} else {
+				file = await this.app.vault.create(path, markdown);
+			}
+
+			await this.app.workspace.getLeaf(false).openFile(file);
+			new Notice("Reading report updated.");
+		} catch (error) {
+			console.error(
+				"Reading Inbox Synthesizer: failed to write reading report",
+				error
+			);
+			new Notice("Failed to write reading report. See console.");
+		}
+	}
+
+	/**
+	 * Read a clipping's article body: frontmatter stripped, markdown noise
+	 * cleaned, then truncated to MAX_INPUT_CHARS so long articles fit
+	 * small-context models. Returns null when the path no longer resolves to
+	 * a file (vanished mid-sync).
 	 */
 	private async readBody(clipping: Clipping): Promise<string | null> {
 		const file = this.app.vault.getAbstractFileByPath(clipping.path);
@@ -128,8 +175,33 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 			return null;
 		}
 		const raw = await this.app.vault.cachedRead(file);
-		const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
-		return body.slice(0, MAX_INPUT_CHARS);
+		const stripped = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+		return this.cleanBody(stripped).slice(0, MAX_INPUT_CHARS);
+	}
+
+	/**
+	 * Strip markdown noise so the truncation window lands on real prose, not
+	 * navigation boilerplate: link-heavy pages otherwise fill the first 24k
+	 * chars with URLs and the model sees no article text at all.
+	 */
+	private cleanBody(text: string): string {
+		// Image embeds carry no prose — drop them entirely.
+		let cleaned = text.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+		// Markdown links: keep the visible text, drop the URL.
+		cleaned = cleaned.replace(/\[([^\]]*)\]\(([^)]*)\)/g, "$1");
+		// Bare URLs are pure token waste.
+		cleaned = cleaned.replace(/https?:\/\/\S+/g, "");
+
+		// Blank out lines left with no letters or digits (list markers,
+		// brackets, punctuation), then collapse the resulting gaps so
+		// paragraph structure survives but boilerplate runs don't.
+		cleaned = cleaned
+			.split("\n")
+			.map((line) => (/[\p{L}\p{N}]/u.test(line) ? line : ""))
+			.join("\n")
+			.replace(/\n{3,}/g, "\n\n");
+
+		return cleaned.trim();
 	}
 
 	/**
