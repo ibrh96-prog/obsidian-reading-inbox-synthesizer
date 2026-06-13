@@ -12,9 +12,10 @@ export interface Clipping {
 
 export interface ClipExtraction {
 	id: string; // djb2 hash of the clipping path
-	summary: string; // 2-3 sentences
-	keyClaims: string[];
+	summary: string; // 2-3 sentences, in the article's own language
+	keyClaims: string[]; // in the article's own language
 	topics: string[]; // lowercase
+	language?: string; // ISO 639-1 code of the article
 	readTimeMinutes?: number;
 }
 

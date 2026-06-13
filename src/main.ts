@@ -1,13 +1,13 @@
-import { Plugin } from "obsidian";
+import { Notice, Plugin, TFile } from "obsidian";
 import {
 	DEFAULT_SETTINGS,
 	ReadingInboxSettingTab,
 	type ReadingInboxSettings,
 } from "./settings";
-import { LLMAdapter } from "./llm";
+import { LLMAdapter, MAX_INPUT_CHARS } from "./llm";
 import { ClippingCollector } from "./collector";
-import { SynthesisEngine } from "./synthesizer";
-import type { SynthesisCache } from "./types";
+import { SynthesisEngine, type ClippingInput } from "./synthesizer";
+import type { Clipping, SynthesisCache } from "./types";
 
 function emptyCache(): SynthesisCache {
 	return { extractions: {}, lastSynced: "" };
@@ -40,6 +40,14 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 		this.engine = new SynthesisEngine(this.llm, this.cache);
 
 		this.addSettingTab(new ReadingInboxSettingTab(this.app, this));
+
+		this.addCommand({
+			id: "sync-clippings",
+			name: "Sync clippings",
+			callback: () => {
+				void this.runSync();
+			},
+		});
 	}
 
 	override onunload(): void {}
@@ -70,6 +78,58 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 			cache: this.cache,
 		};
 		await this.saveData(data);
+	}
+
+	/**
+	 * Sync the reading inbox: collect clippings, prepare bodies for the
+	 * new/changed ones, hand them to the pure engine, persist the cache.
+	 * All vault I/O happens here — the engine never touches files.
+	 */
+	private async runSync(): Promise<void> {
+		try {
+			const clippings = this.collector.collect();
+
+			const inputs: ClippingInput[] = [];
+			for (const clipping of clippings) {
+				if (!this.engine.needsExtraction(clipping)) {
+					continue;
+				}
+				const body = await this.readBody(clipping);
+				if (body === null) {
+					continue;
+				}
+				inputs.push({ clipping, body });
+			}
+
+			const result = await this.engine.syncClippings(
+				clippings,
+				inputs,
+				this.todayISO()
+			);
+			await this.persist();
+
+			new Notice(
+				`Synced ${result.extracted} clippings (${result.skipped} skipped, ${result.failed} failed).`
+			);
+		} catch (error) {
+			console.error("Reading Inbox Synthesizer: sync failed", error);
+			new Notice("Sync failed. See console for details.");
+		}
+	}
+
+	/**
+	 * Read a clipping's article body: frontmatter stripped, truncated to
+	 * MAX_INPUT_CHARS so long articles fit small-context models. Returns null
+	 * when the path no longer resolves to a file (vanished mid-sync).
+	 */
+	private async readBody(clipping: Clipping): Promise<string | null> {
+		const file = this.app.vault.getAbstractFileByPath(clipping.path);
+		if (!(file instanceof TFile)) {
+			return null;
+		}
+		const raw = await this.app.vault.cachedRead(file);
+		const body = raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+		return body.slice(0, MAX_INPUT_CHARS);
 	}
 
 	/**

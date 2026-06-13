@@ -86,8 +86,9 @@ export class ClippingCollector {
 		}
 
 		const savedDate =
-			this.asString(frontmatter?.["created"]) ??
-			this.asString(frontmatter?.["date saved"]);
+			this.parseDate(frontmatter?.["created"]) ??
+			this.parseDate(frontmatter?.["published"]) ??
+			this.parseDate(frontmatter?.["date saved"]);
 		if (savedDate !== undefined) {
 			clipping.savedDate = savedDate;
 		}
@@ -98,6 +99,32 @@ export class ClippingCollector {
 		}
 
 		return clipping;
+	}
+
+	/**
+	 * Normalize a frontmatter date to a YYYY-MM-DD string. Clipper templates
+	 * vary: accept ISO ("2026-06-13" or a full timestamp, sliced to the date)
+	 * and European "DD.MM.YYYY" ("13.06.2026"). Pure string parsing — never
+	 * `new Date()` — so locale and timezone can't shift the result. Anything
+	 * unrecognized stays undefined rather than guessing.
+	 */
+	private parseDate(value: unknown): string | undefined {
+		const raw = this.asString(value);
+		if (raw === undefined) {
+			return undefined;
+		}
+
+		const iso = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+		if (iso) {
+			return iso[1];
+		}
+
+		const european = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
+		if (european) {
+			return `${european[3]}-${european[2]}-${european[1]}`;
+		}
+
+		return undefined;
 	}
 
 	/** Non-empty trimmed string, or undefined for anything else. */
