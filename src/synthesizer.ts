@@ -18,6 +18,7 @@ export interface SyncResult {
 	skipped: number;
 	failed: number;
 	themes: number;
+	themesResynthesized: number;
 }
 
 // --- Shape the LLM is asked to return (validated before use) ---
@@ -153,6 +154,7 @@ export class SynthesisEngine {
 			skipped: allClippings.length - inputs.length,
 			failed: 0,
 			themes: 0,
+			themesResynthesized: 0,
 		};
 
 		for (const { clipping, body } of inputs) {
@@ -180,7 +182,9 @@ export class SynthesisEngine {
 
 		// Per-theme synthesis runs after every clipping is extracted, so themes
 		// see the freshest summaries. A theme failure never aborts the sync.
-		result.themes = await this.syncThemes(allClippings);
+		const themeResult = await this.syncThemes(allClippings);
+		result.themes = themeResult.total;
+		result.themesResynthesized = themeResult.resynthesized;
 
 		this.cache.lastSynced = todayISO;
 		return result;
@@ -196,9 +200,12 @@ export class SynthesisEngine {
 	 *
 	 * Returns the number of themes currently identified (for the sync Notice).
 	 */
-	private async syncThemes(allClippings: Clipping[]): Promise<number> {
+	private async syncThemes(
+		allClippings: Clipping[]
+	): Promise<{ total: number; resynthesized: number }> {
 		const themes = this.themesOf(allClippings);
 		const activeTopics = new Set(themes.map((t) => t.topic));
+		let resynthesized = 0;
 
 		for (const theme of themes) {
 			const signature = this.themeSignature(theme.members);
@@ -215,6 +222,7 @@ export class SynthesisEngine {
 			}
 
 			this.cache.themeSyntheses[theme.topic] = { signature, synthesis };
+			resynthesized += 1;
 			console.log(
 				`[Reading Inbox Synthesizer] Synthesized theme: ${theme.topic}`
 			);
@@ -227,7 +235,7 @@ export class SynthesisEngine {
 			}
 		}
 
-		return themes.length;
+		return { total: themes.length, resynthesized };
 	}
 
 	/**

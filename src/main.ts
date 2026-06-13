@@ -140,7 +140,8 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 
 			new Notice(
 				`Synced ${result.extracted} clippings, ${result.themes} themes ` +
-					`(${result.skipped} skipped, ${result.failed} failed).`
+					`(${result.themesResynthesized} re-synthesized, ` +
+					`${result.skipped} skipped, ${result.failed} failed).`
 			);
 		} catch (error) {
 			console.error("Reading Inbox Synthesizer: sync failed", error);
