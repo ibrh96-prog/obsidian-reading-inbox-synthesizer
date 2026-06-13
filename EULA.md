@@ -1,42 +1,53 @@
-# End User License Agreement — Reading Inbox Synthesizer
+# End User License Agreement (EULA)
 
-Last updated: June 2026
+**Reading Inbox Synthesizer**
+Last updated: 2026-06-13
 
-## 1. Acceptance
+This End User License Agreement ("Agreement") is a legal agreement between you ("you" or "the user") and the developer of Reading Inbox Synthesizer ("the Software"). By installing, activating, or using the Software, you agree to the terms of this Agreement. If you do not agree, do not use the Software.
 
-By purchasing, downloading, or using Reading Inbox Synthesizer ("the Plugin"), you agree to this agreement. If you do not agree, do not use the Plugin.
+## 1. License grant
 
-## 2. License Grant
+The free tier of the Software is provided at no cost, subject to the usage limits described in the Software and its documentation.
 
-Upon purchase of a Pro license, you receive a personal, non-transferable, non-exclusive license to use the Plugin on any devices you own. Free tier usage requires no purchase.
+Upon purchase of a Pro license, you are granted a personal, non-exclusive, non-transferable license to use the Pro features of the Software for your own personal or internal business use. A Pro license is a one-time purchase priced at USD $19.99.
 
-## 3. Restrictions
+## 2. License key
 
-You may not:
-- Resell, sublicense, or redistribute the Plugin or any license key
-- Reverse engineer the license verification system
-- Share your license key with others
+Your Pro license is activated by an offline license key tied to your purchase. You may use your license key on the devices you personally own or control. You may not sell, share, sublicense, distribute, or publish your license key. Distribution of a license key voids the license without refund.
 
-## 4. Privacy
+## 3. Bring your own key (BYOK)
 
-The Plugin processes your clippings locally. Clipping content is transmitted only to the AI provider you configure (Anthropic, OpenAI, OpenRouter, or a custom endpoint). The Plugin does not collect, store, or transmit any data to the developer.
+The Software requires you to supply your own API key for a third-party language model provider (such as Anthropic, OpenAI, or OpenRouter). You are solely responsible for:
+- obtaining and paying for your own provider API access;
+- complying with the terms of service of your chosen provider; and
+- any costs, usage, or charges incurred through your API key.
 
-## 5. API Keys
+The developer is not a party to your relationship with any provider and is not responsible for any provider charges, outages, or changes.
 
-Your API key is stored locally in Obsidian's data storage on your device. It is never transmitted to the developer or any third party other than your chosen AI provider.
+## 4. Privacy and data
 
-## 6. Refunds
+The Software runs entirely on your device. It has no server, no database, and no telemetry. Your clippings and API key remain on your machine. The Software transmits clipping content only to the language model provider you configure, using your own key, for the purpose of generating synthesis output. The developer does not receive, store, or have access to your clippings, API key, or any usage data.
 
-Refund requests within 30 days of purchase will be honored if the Plugin does not function as described. Contact: support via Gumroad.
+## 5. Disclaimer of warranty
 
-## 7. Disclaimer
+The Software is provided "as is," without warranty of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, and non-infringement. The developer does not warrant that the Software will be error-free, that output will be accurate, or that it will meet your requirements. Language model output may contain errors or omissions; you are responsible for reviewing all output before relying on it.
 
-The Plugin is provided "as is" without warranty of any kind. The developer is not responsible for any data loss, privacy incidents caused by your chosen AI provider, or any other damages arising from use of the Plugin.
+## 6. Limitation of liability
 
-## 8. Changes
+To the maximum extent permitted by law, the developer shall not be liable for any indirect, incidental, special, consequential, or punitive damages, or any loss of data, profits, or business, arising out of or related to your use of the Software. The developer's total liability under this Agreement shall not exceed the amount you paid for the Pro license.
 
-This agreement may be updated at any time. Continued use of the Plugin constitutes acceptance of the updated terms.
+## 7. Refunds
 
-## 9. Contact
+Refund eligibility is governed by the policy stated on the purchase platform (Gumroad) at the time of purchase.
 
-Ibrahim Edhem Harbutlu — via Gumroad product page.
+## 8. Termination
+
+This Agreement is effective until terminated. It terminates automatically if you breach any of its terms, including unauthorized sharing of a license key. Upon termination, you must stop using the Pro features of the Software.
+
+## 9. Changes to this Agreement
+
+The developer may update this Agreement for future versions of the Software. Continued use of a new version after an update constitutes acceptance of the updated terms.
+
+## 10. Contact
+
+For questions about this Agreement, contact the developer through the purchase platform (Gumroad) or the GitHub repository.
