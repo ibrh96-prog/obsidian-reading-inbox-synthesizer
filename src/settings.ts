@@ -3,6 +3,10 @@ import type ReadingInboxSynthesizerPlugin from "./main";
 
 export type LLMProvider = "anthropic" | "openai-compatible";
 
+/** Floor for the stale-clipping threshold; flagging anything younger than a
+ * week would just be noise. Mirrored defensively in the report engine. */
+export const STALE_DAYS_MIN = 7;
+
 export interface ReadingInboxSettings {
 	provider: LLMProvider;
 	apiKey: string;
@@ -10,6 +14,7 @@ export interface ReadingInboxSettings {
 	model: string;
 	clippingsFolder: string;
 	clippingsTag: string;
+	staleDays: number;
 	proLicenseKey: string;
 }
 
@@ -20,6 +25,7 @@ export const DEFAULT_SETTINGS: ReadingInboxSettings = {
 	model: "claude-sonnet-4-6",
 	clippingsFolder: "Clippings",
 	clippingsTag: "clipping",
+	staleDays: 90,
 	proLicenseKey: "",
 };
 
@@ -117,6 +123,25 @@ export class ReadingInboxSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.clippingsTag)
 					.onChange(async (value) => {
 						this.plugin.settings.clippingsTag = value.trim();
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName("Stale after (days)")
+			.setDesc(
+				`Clippings saved this many days ago are flagged "Needs attention" in the report. Minimum ${STALE_DAYS_MIN}.`
+			)
+			.addText((text) => {
+				text.inputEl.type = "number";
+				text
+					.setPlaceholder("90")
+					.setValue(String(this.plugin.settings.staleDays))
+					.onChange(async (value) => {
+						const parsed = Number.parseInt(value, 10);
+						this.plugin.settings.staleDays = Number.isFinite(parsed)
+							? Math.max(STALE_DAYS_MIN, parsed)
+							: DEFAULT_SETTINGS.staleDays;
 						await this.plugin.saveSettings();
 					});
 			});

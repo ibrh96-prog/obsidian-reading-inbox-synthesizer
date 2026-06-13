@@ -140,7 +140,8 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 			const clippings = this.collector.collect();
 			const markdown = this.engine.buildReportMarkdown(
 				clippings,
-				this.todayISO()
+				this.todayISO(),
+				this.settings.staleDays
 			);
 
 			const existing = this.app.vault.getAbstractFileByPath(path);

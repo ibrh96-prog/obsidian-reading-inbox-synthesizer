@@ -142,9 +142,14 @@ export class SynthesisEngine {
 	 * Render the synthesis report as a markdown document. Pure and free: reads
 	 * the in-memory cache and the collected clippings — zero LLM calls — and
 	 * returns a string; writing it to the vault is the caller's job. `todayISO`
-	 * (YYYY-MM-DD) is the caller's clock and anchors the "This week" window.
+	 * (YYYY-MM-DD) is the caller's clock and anchors the "This week" window and
+	 * the stale-clipping cutoff. `staleDays` is clamped to a 7-day floor.
 	 */
-	buildReportMarkdown(clippings: Clipping[], todayISO: string): string {
+	buildReportMarkdown(
+		clippings: Clipping[],
+		todayISO: string,
+		staleDays: number
+	): string {
 		const lines: string[] = [];
 
 		// Newest saved first; undated clippings last ("" sorts after any date
@@ -223,7 +228,45 @@ export class SynthesisEngine {
 		}
 		lines.push("");
 
-		// --- 4. Summaries ---
+		// --- 4. Needs attention (stale triage, deterministic) ---
+		// Cutoff is "staleDays before today": a clipping saved on or before this
+		// date is stale. Floor at 7 days defensively — the setting clamps too,
+		// but a hand-edited data.json could carry anything. Lexicographic
+		// YYYY-MM-DD comparison, timezone-safe like the week window.
+		const today = todayISO.slice(0, 10);
+		const staleCutoff = this.addDays(today, -Math.max(7, staleDays));
+		const stale = sorted
+			.filter((clipping) => {
+				const day = this.dateKey(clipping.savedDate);
+				// Undated clippings are never stale — don't guess.
+				return day !== "" && day <= staleCutoff;
+			})
+			.sort((a, b) =>
+				this.dateKey(a.savedDate).localeCompare(this.dateKey(b.savedDate))
+			);
+		// Omit the section entirely when nothing is stale.
+		if (stale.length > 0) {
+			lines.push("## Needs attention");
+			for (const clipping of stale) {
+				const name = this.noteName(clipping.path);
+				const day = this.dateKey(clipping.savedDate);
+				const age = this.daysBetween(day, today);
+				const extraction = extractionOf(clipping);
+				const read = extraction?.readTimeMinutes
+					? ` — ${extraction.readTimeMinutes} min read`
+					: "";
+				lines.push(
+					`- [[${name}]] — saved ${day} (${age} days ago)${read}`
+				);
+			}
+			lines.push("");
+			lines.push(
+				"_These have sat unread for a while — consider reading, archiving, or deleting them._"
+			);
+			lines.push("");
+		}
+
+		// --- 5. Summaries ---
 		lines.push("## Summaries");
 		const synced = sorted.filter((c) => extractionOf(c) !== undefined);
 		if (synced.length === 0) {
@@ -311,6 +354,19 @@ export class SynthesisEngine {
 		const m = String(dt.getUTCMonth() + 1).padStart(2, "0");
 		const d = String(dt.getUTCDate()).padStart(2, "0");
 		return `${y}-${m}-${d}`;
+	}
+
+	/**
+	 * Whole days from one YYYY-MM-DD calendar date to another (to − from).
+	 * UTC millisecond difference, same Date-math approach as {@link addDays},
+	 * so timezone and DST never shift the count. Both inputs are assumed to be
+	 * valid calendar-date keys (callers pass dateKey output).
+	 */
+	private daysBetween(fromDay: string, toDay: string): number {
+		const [fy, fm, fd] = fromDay.split("-").map(Number);
+		const [ty, tm, td] = toDay.split("-").map(Number);
+		const ms = Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd);
+		return Math.round(ms / 86400000);
 	}
 
 	/**
