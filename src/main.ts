@@ -7,6 +7,7 @@ import {
 import { LLMAdapter, MAX_INPUT_CHARS } from "./llm";
 import { ClippingCollector } from "./collector";
 import { SynthesisEngine, type ClippingInput } from "./synthesizer";
+import { verifyLicense } from "./license";
 import type { Clipping, SynthesisCache } from "./types";
 
 function emptyCache(): SynthesisCache {
@@ -98,6 +99,16 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 	 * All vault I/O happens here — the engine never touches files.
 	 */
 	private async runSync(): Promise<void> {
+		// Pro gate. Lifetime free tier: 3 successful syncs, no monthly reset.
+		// Pro users are never counted or blocked. Bail before any LLM call.
+		const isPro = verifyLicense(this.settings.proLicenseKey).valid;
+		if (!isPro && this.settings.freeUsage.count >= 3) {
+			new Notice(
+				"Free limit reached: 3 total syncs. Upgrade to Pro for unlimited."
+			);
+			return;
+		}
+
 		try {
 			const clippings = this.collector.collect();
 
@@ -119,6 +130,13 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 				this.todayISO()
 			);
 			await this.persist();
+
+			// Count the use only after a fully successful sync. One sync = one
+			// use, regardless of how many clippings it touched.
+			if (!isPro) {
+				this.settings.freeUsage.count += 1;
+				await this.persist();
+			}
 
 			new Notice(
 				`Synced ${result.extracted} clippings, ${result.themes} themes ` +

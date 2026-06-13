@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ReadingInboxSynthesizerPlugin from "./main";
+import { verifyLicense } from "./license";
 
 export type LLMProvider = "anthropic" | "openai-compatible";
 
@@ -16,6 +17,9 @@ export interface ReadingInboxSettings {
 	clippingsTag: string;
 	staleDays: number;
 	proLicenseKey: string;
+	// Lifetime free-tier usage. A "use" is one successful sync; there is no
+	// monthly reset, so the count only ever grows until a Pro license unlocks it.
+	freeUsage: { count: number };
 }
 
 export const DEFAULT_SETTINGS: ReadingInboxSettings = {
@@ -27,6 +31,7 @@ export const DEFAULT_SETTINGS: ReadingInboxSettings = {
 	clippingsTag: "clipping",
 	staleDays: 90,
 	proLicenseKey: "",
+	freeUsage: { count: 0 },
 };
 
 export class ReadingInboxSettingTab extends PluginSettingTab {
@@ -163,7 +168,19 @@ export class ReadingInboxSettingTab extends PluginSettingTab {
 					});
 			});
 
-		// License verification arrives in Phase 4; until then just show tier.
-		new Setting(containerEl).setDesc("Free tier.");
+		const status = verifyLicense(this.plugin.settings.proLicenseKey);
+		if (status.valid) {
+			new Setting(containerEl)
+				.setName("✓ Pro active")
+				.setDesc(`Licensed to ${status.email}`);
+		} else if (this.plugin.settings.proLicenseKey) {
+			new Setting(containerEl)
+				.setName("License invalid")
+				.setDesc(status.reason ?? "Could not verify license key.");
+		} else {
+			new Setting(containerEl).setDesc(
+				`Free tier — 3 total syncs (${this.plugin.settings.freeUsage.count}/3 used)`
+			);
+		}
 	}
 }
