@@ -47,7 +47,7 @@ You clip dozens of articles into Obsidian with the Web Clipper and never process
 | All AI providers | ✅ | ✅ |
 | Cross-article themes | ✅ | ✅ |
 
-The free tier allows 3 total syncs (a one-time allowance, not a monthly reset). Generating the reading report from already-synced clippings is always free. Upgrade to Pro for unlimited syncing.
+The free tier allows 3 total syncs (a one-time allowance, not a monthly reset). Generating the reading report from already-synced clippings is always free. Upgrade to Pro at [ibrh96.gumroad.com/l/yeulsi](https://ibrh96.gumroad.com/l/yeulsi) for unlimited syncing.
 
 ## Privacy
 
