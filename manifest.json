@@ -1,7 +1,7 @@
 {
   "id": "reading-inbox-synthesizer",
   "name": "Reading Inbox Synthesizer",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "minAppVersion": "1.5.0",
   "description": "Turn your web clippings backlog into reading memory: batch summaries, cross-article themes, and weekly digests.",
   "author": "ibrh96-prog",
