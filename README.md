@@ -4,7 +4,9 @@ An Obsidian plugin that turns your web-clippings backlog into reading memory: ba
 
 ## The Problem
 
-You clip dozens of articles into Obsidian with the Web Clipper and never process them. A month later you have 40 unread clippings and no idea which ones still matter. This plugin reads the whole backlog and gives you one synthesis note: what each clipping says, which themes run across them, what you saved this week, and what has gone stale.
+When Pocket shut down in 2025, a lot of people moved their reading into Obsidian with the Web Clipper — files they own, no server that can disappear. But the backlog moved with them. I kept seeing the same thing described on forums: the "to-read graveyard" just relocated to the vault.
+
+You clip dozens of articles and never process them. A month later you have 40 unread clippings and no idea which ones still matter. This plugin reads the whole backlog and gives you one synthesis note: what each clipping says, which themes run across them, what you saved this week, and what has gone stale.
 
 ## Features
 
