@@ -1,5 +1,7 @@
 import nacl from "tweetnacl";
 
+export const GUMROAD_URL = "https://ibrh96.gumroad.com/l/yeulsi";
+
 // Offline Ed25519 license verification for Reading Inbox Synthesizer.
 // A license key is base64(JSON({ p, s })) where:
 //   p = base64 of the UTF-8 payload JSON

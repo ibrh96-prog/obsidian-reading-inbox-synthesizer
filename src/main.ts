@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile } from "obsidian";
+import { Modal, Notice, Plugin, TFile } from "obsidian";
 import {
 	DEFAULT_SETTINGS,
 	ReadingInboxSettingTab,
@@ -7,7 +7,7 @@ import {
 import { LLMAdapter, MAX_INPUT_CHARS } from "./llm";
 import { ClippingCollector } from "./collector";
 import { SynthesisEngine, type ClippingInput } from "./synthesizer";
-import { verifyLicense } from "./license";
+import { verifyLicense, GUMROAD_URL } from "./license";
 import type { Clipping, SynthesisCache } from "./types";
 
 function emptyCache(): SynthesisCache {
@@ -30,6 +30,8 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 	llm!: LLMAdapter;
 	collector!: ClippingCollector;
 	engine!: SynthesisEngine;
+
+	private isSyncInProgress = false;
 
 	override async onload(): Promise<void> {
 		console.log("Reading Inbox Synthesizer loaded.");
@@ -99,16 +101,29 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 	 * All vault I/O happens here — the engine never touches files.
 	 */
 	private async runSync(): Promise<void> {
+		// Concurrency guard — one sync at a time.
+		if (this.isSyncInProgress) {
+			new Notice("A sync is already running. Please wait for it to finish.");
+			return;
+		}
+
 		// Pro gate. Lifetime free tier: 3 successful syncs, no monthly reset.
 		// Pro users are never counted or blocked. Bail before any LLM call.
 		const isPro = verifyLicense(this.settings.proLicenseKey).valid;
 		if (!isPro && this.settings.freeUsage.count >= 3) {
-			new Notice(
-				"Free limit reached: 3 total syncs. Upgrade to Pro for unlimited."
-			);
+			new ProUpgradeModal(this.app).open();
 			return;
 		}
 
+		// Reserve the free-tier use BEFORE the network round-trip so a crash or
+		// force-quit cannot let the user exceed the 3-sync limit. A caught error
+		// refunds the count (see catch block below).
+		if (!isPro) {
+			this.settings.freeUsage.count += 1;
+			await this.persist();
+		}
+
+		this.isSyncInProgress = true;
 		try {
 			const clippings = this.collector.collect();
 
@@ -131,21 +146,22 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 			);
 			await this.persist();
 
-			// Count the use only after a fully successful sync. One sync = one
-			// use, regardless of how many clippings it touched.
-			if (!isPro) {
-				this.settings.freeUsage.count += 1;
-				await this.persist();
-			}
-
 			new Notice(
 				`Synced ${result.extracted} clippings, ${result.themes} themes ` +
 					`(${result.themesResynthesized} re-synthesized, ` +
 					`${result.skipped} skipped, ${result.failed} failed).`
 			);
 		} catch (error) {
+			// Refund the reserved free-tier use so a failed sync doesn't consume a
+			// slot. Only applies when we actually incremented above.
+			if (!isPro) {
+				this.settings.freeUsage.count -= 1;
+				await this.persist();
+			}
 			console.error("Reading Inbox Synthesizer: sync failed", error);
 			new Notice("Sync failed. See console for details.");
+		} finally {
+			this.isSyncInProgress = false;
 		}
 	}
 
@@ -237,5 +253,42 @@ export default class ReadingInboxSynthesizerPlugin extends Plugin {
 		const month = String(now.getMonth() + 1).padStart(2, "0");
 		const day = String(now.getDate()).padStart(2, "0");
 		return `${year}-${month}-${day}`;
+	}
+}
+
+class ProUpgradeModal extends Modal {
+	onOpen(): void {
+		const { contentEl } = this;
+
+		contentEl.createEl("h2", { text: "Free limit reached" });
+
+		contentEl.createEl("p", {
+			text: "You've used all 3 free syncs. Your existing reading report can still be generated any time from already-synced content — that's always free. To run new syncs, upgrade to Pro.",
+		});
+
+		contentEl.createEl("p", {
+			text: "Pro is a one-time payment with no subscription. It unlocks unlimited syncs for this vault.",
+		});
+
+		const buttonRow = contentEl.createEl("div", {
+			cls: "modal-button-container",
+		});
+
+		const getProBtn = buttonRow.createEl("button", {
+			text: "Get Pro license",
+			cls: "mod-cta",
+		});
+		getProBtn.addEventListener("click", () => {
+			window.open(GUMROAD_URL, "_blank");
+		});
+
+		const gotItBtn = buttonRow.createEl("button", { text: "Got it" });
+		gotItBtn.addEventListener("click", () => {
+			this.close();
+		});
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
 	}
 }

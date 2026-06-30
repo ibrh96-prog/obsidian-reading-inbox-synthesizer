@@ -1,6 +1,6 @@
 {
   "name": "obsidian-reading-inbox-synthesizer",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Turn your web clippings backlog into reading memory: batch summaries, cross-article themes, and weekly digests.",
   "main": "main.js",
   "scripts": {

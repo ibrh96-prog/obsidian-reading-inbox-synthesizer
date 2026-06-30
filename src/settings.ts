@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ReadingInboxSynthesizerPlugin from "./main";
-import { verifyLicense } from "./license";
+import { verifyLicense, GUMROAD_URL } from "./license";
 
 export type LLMProvider = "anthropic" | "openai-compatible";
 
@@ -181,6 +181,22 @@ export class ReadingInboxSettingTab extends PluginSettingTab {
 			new Setting(containerEl).setDesc(
 				`Free tier — 3 total syncs (${this.plugin.settings.freeUsage.count}/3 used)`
 			);
+		}
+
+		if (!status.valid) {
+			new Setting(containerEl).setName("Upgrade to Pro").setHeading();
+
+			new Setting(containerEl)
+				.setName("Unlimited syncs, one-time payment")
+				.setDesc(
+					"No subscription. Pay once and sync as many times as you like. " +
+						"Generating reports from already-synced content is always free."
+				)
+				.addButton((button) => {
+					button.setButtonText("Get Pro license").setCta().onClick(() => {
+						window.open(GUMROAD_URL, "_blank");
+					});
+				});
 		}
 	}
 }
